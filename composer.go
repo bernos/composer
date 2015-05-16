@@ -2,90 +2,95 @@ package composer
 
 import (
 	"bytes"
-	"flag"
-	"github.com/elazarl/goproxy"
-	"golang.org/x/net/html"
+	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
-	//"strings"
+	"strings"
+	"time"
+
+	"golang.org/x/net/html"
 )
-
-var (
-	listen = flag.String("listen", "localhost:1080", "listen on address")
-)
-
-type ComposerHttpServer struct {
-	proxy *goproxy.ProxyHttpServer
-}
-
-func (c *ComposerHttpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	r.URL.Scheme = "http"
-	r.Host = "localhost:8080"
-	r.URL.Host = "localhost:8080"
-
-	c.proxy.ServeHTTP(w, r)
-}
-
-func NewComposerHttpServer() *ComposerHttpServer {
-	c := ComposerHttpServer{
-		proxy: goproxy.NewProxyHttpServer(),
-	}
-
-	c.proxy.OnResponse().DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
-		content := parseHtml(resp.Body)
-		resp.Body.Close()
-		resp.Body = ioutil.NopCloser(content)
-
-		return resp
-	})
-
-	return &c
-}
 
 type ComposerTag struct {
-	URL string
+	Content io.Reader
+	Offset  int
+	Url     string
 }
 
-func parseHtml(r io.Reader) io.Reader {
+func Compose(r io.Reader) io.Reader {
+	buf, tags := extractComposerTags(r)
+	output := new(bytes.Buffer)
+
+	if len(tags) > 0 {
+		offset := 0
+
+		for tag := range buildTagPipeline(tags, fetchFromUrl) {
+			output.Write(buf.Next(tag.Offset - offset))
+
+			if tag.Content != nil {
+				output.ReadFrom(Compose(tag.Content))
+			} else {
+				output.WriteString("<!-- composer failed to load content from " + tag.Url + " -->")
+			}
+
+			offset += tag.Offset
+		}
+	}
+
+	output.Write(buf.Next(buf.Len()))
+
+	return output
+}
+
+/**
+ * extractComposerTags will read html content from an io.Reader and extract any
+ * composer tags, creating a ComposerTag for each. It will also append all html
+ * content outside of the composer tags to to a buffer, ready to merged with
+ * the tags
+ */
+func extractComposerTags(r io.Reader) (*bytes.Buffer, []*ComposerTag) {
 	z := html.NewTokenizer(r)
 	buf := new(bytes.Buffer)
+	depth := 0
+	tags := make([]*ComposerTag, 0)
 
 	for {
 		tt := z.Next()
-		log.Printf("tt: %v", tt)
 
 		if tt == html.ErrorToken {
-			return buf
+			return buf, tags
 		}
 
-		if _, hasAttr := z.TagName(); hasAttr {
-			attributes := getAttributes(z, make([]*html.Attribute, 0))
-
-			for i := range attributes {
-				log.Printf("Attr %s=%s", attributes[i].Key, attributes[i].Val)
+		if depth == 0 {
+			if tag := getComposerTag(z); tag != nil {
+				tag.Offset = buf.Len()
+				tags = append(tags, tag)
+				if tt == html.StartTagToken {
+					depth++
+				}
+			} else {
+				buf.Write(z.Raw())
 			}
+		} else if tt == html.EndTagToken {
+			depth--
 		}
-
-		buf.Write(z.Raw())
-		log.Print(string(z.Raw()))
 	}
-
 }
 
 func getComposerTag(z *html.Tokenizer) *ComposerTag {
+
 	attributes := getAttributes(z, make([]*html.Attribute, 0))
 
 	composerTag := new(ComposerTag)
 
 	for i := range attributes {
 		if attributes[i].Key == "composer-url" {
-			composerTag.URL = attributes[i].Val
+			composerTag.Url = attributes[i].Val
 		}
 	}
 
-	if len(composerTag.URL) > 0 {
+	if len(composerTag.Url) > 0 {
 		return composerTag
 	}
 
@@ -102,4 +107,36 @@ func getAttributes(z *html.Tokenizer, a []*html.Attribute) []*html.Attribute {
 	}
 
 	return a
+}
+
+/**
+ * fetchFromUrl will fetch content for the url and return the resulting io.Reader
+ */
+func fetchFromUrl(url string) io.Reader {
+	ch := make(chan io.Reader, 1)
+
+	go func(url string) {
+
+		res, err := http.Get(url)
+
+		if err != nil {
+			ch <- strings.NewReader(fmt.Sprintf("<-- composer encountered an error while loading content from %s - %v", url, err))
+		} else {
+			greeting, err := ioutil.ReadAll(res.Body)
+			res.Body.Close()
+
+			if err != nil {
+				ch <- strings.NewReader(fmt.Sprintf("<-- composer encountered an error while loading content from %s - %v", url, err))
+			} else {
+				ch <- bytes.NewReader(greeting)
+			}
+		}
+	}(url)
+
+	select {
+	case r := <-ch:
+		return r
+	case <-time.After(time.Second * 1):
+		return nil
+	}
 }

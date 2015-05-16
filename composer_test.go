@@ -1,9 +1,15 @@
 package composer
 
 import (
-	"golang.org/x/net/html"
+	"bytes"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"golang.org/x/net/html"
 )
 
 func TestGetAttributes(t *testing.T) {
@@ -41,7 +47,62 @@ func TestGetComposerTag(t *testing.T) {
 		t.Error("Did not find ComposerTag when one was expected")
 	}
 
-	if t2.URL != "http://example.com" {
+	if t2.Url != "http://example.com" {
 		t.Error("Did not find correct ComposerTag url")
+	}
+}
+
+func TestCompose(t *testing.T) {
+	serverUrl := ""
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/a" {
+			fmt.Fprintf(w, "Hello, client from <div composer-url=\"%s/b\"></div>", serverUrl)
+		} else if r.URL.Path == "/b" {
+			fmt.Fprint(w, "Hello, client from b")
+		} else {
+			fmt.Fprint(w, "Hello, "+r.URL.Path)
+		}
+	}))
+
+	serverUrl = ts.URL
+
+	defer ts.Close()
+
+	unparsed := strings.NewReader(fmt.Sprintf("<div><p composer-url=\"%s/a\" title=\"captain\">other stuff</p></div>", ts.URL))
+	parsed := Compose(unparsed)
+
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(parsed)
+
+	result := buf.String()
+
+	if result != "blah" {
+		t.Errorf("Expected blah but got %s", result)
+	}
+}
+
+func TestPipeline(t *testing.T) {
+	tags := []*ComposerTag{
+		&ComposerTag{Url: "http://example/com/a"},
+		&ComposerTag{Url: "http://example/com/b"},
+		&ComposerTag{Url: "http://example/com/c"},
+	}
+
+	loader := func(url string) io.Reader {
+		return strings.NewReader(url)
+	}
+
+	pipeline := buildTagPipeline(tags, loader)
+
+	for tag := range pipeline {
+		url := tag.Url
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(tag.Content)
+		content := buf.String()
+
+		if url != content {
+			t.Errorf("Expected %s but got %s", url, content)
+		}
 	}
 }
