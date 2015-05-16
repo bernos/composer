@@ -3,13 +3,12 @@ package composer
 import (
 	"bytes"
 	"fmt"
+	"golang.org/x/net/html"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
-
-	"golang.org/x/net/html"
 )
 
 type ComposerTag struct {

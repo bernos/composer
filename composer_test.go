@@ -3,13 +3,12 @@ package composer
 import (
 	"bytes"
 	"fmt"
+	"golang.org/x/net/html"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"golang.org/x/net/html"
 )
 
 func TestGetAttributes(t *testing.T) {
