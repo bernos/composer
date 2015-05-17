@@ -92,7 +92,7 @@ func TestPipeline(t *testing.T) {
 		return strings.NewReader(url)
 	}
 
-	pipeline := buildTagPipeline(tags, loader)
+	pipeline := BuildTagPipeline(tags, loader)
 
 	for tag := range pipeline {
 		url := tag.Url

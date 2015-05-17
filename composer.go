@@ -24,7 +24,7 @@ func Compose(r io.Reader) io.Reader {
 	if len(tags) > 0 {
 		offset := 0
 
-		for tag := range buildTagPipeline(tags, fetchFromUrl) {
+		for tag := range BuildTagPipeline(tags, fetchFromUrl) {
 			output.Write(buf.Next(tag.Offset - offset))
 
 			if tag.Content != nil {

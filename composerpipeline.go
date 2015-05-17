@@ -9,7 +9,7 @@ type Loader func(string) io.Reader
 
 type PipelineStep func(<-chan *ComposerTag) <-chan *ComposerTag
 
-func buildTagPipeline(tags []*ComposerTag, loader Loader) <-chan *ComposerTag {
+func BuildTagPipeline(tags []*ComposerTag, loader Loader) <-chan *ComposerTag {
 	source := generateComposerTagsChannel(tags)
 	load := fetchContentForComposerTags(loader)
 
