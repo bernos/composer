@@ -2,37 +2,64 @@ package composer
 
 import (
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 	"time"
 )
 
-var _ = Describe("Testing with Ginkgo", func() {
-	It("get and set", func() {
+var _ = Describe("Memory Cache", func() {
 
-		expires := time.Now().Add(time.Minute)
-		expected := "myvalue"
-		key := "mykey"
+	Context("When getting a value from the cache", func() {
 
-		cache := NewMemoryCache()
+		var (
+			cache Cache
+		)
 
-		cache.Set(key, expected, expires)
+		BeforeEach(func() {
+			cache = NewMemoryCache()
 
-		if actual, ok := cache.Get(key); !ok || actual != expected {
-			GinkgoT().Errorf("Expected %s but got %s", expected, actual)
-		}
+			cache.Set("key_one", "value_one", time.Now().Add(time.Minute))
+			cache.Set("key_two", "value_two", time.Now().Add(time.Minute*-1))
+		})
+
+		It("Should return the value and true as the status if the value exists and is not expired", func() {
+			value, ok := cache.Get("key_one")
+
+			Expect(value).To(Equal("value_one"))
+			Expect(ok).To(BeTrue())
+		})
+
+		It("Should return false status if the value does not exist", func() {
+			value, ok := cache.Get("key_three")
+
+			Expect(value).To(BeZero())
+			Expect(ok).To(BeFalse())
+		})
+
+		It("Should return false status if the value has expired", func() {
+			value, ok := cache.Get("key_two")
+
+			Expect(value).To(BeZero())
+			Expect(ok).To(BeFalse())
+		})
 	})
-	It("expiry", func() {
 
-		expires := time.Now().Add(time.Second)
-		key := "mykey"
+	Context("When setting a value in the cache", func() {
+		var (
+			cache Cache
+		)
 
-		cache := NewMemoryCache()
+		BeforeEach(func() {
+			cache = NewMemoryCache()
+		})
 
-		cache.Set(key, "myvalue", expires)
+		It("Should update the value if a new value with the same key is set", func() {
+			cache.Set("key_one", "value_one", time.Now().Add(time.Minute))
+			cache.Set("key_one", "value_two", time.Now().Add(time.Minute))
 
-		time.Sleep(time.Second * 2)
+			value, ok := cache.Get("key_one")
 
-		if actual, ok := cache.Get(key); ok {
-			GinkgoT().Errorf("Expected nil but got %s", actual)
-		}
+			Expect(value).To(Equal("value_two"))
+			Expect(ok).To(BeTrue())
+		})
 	})
 })

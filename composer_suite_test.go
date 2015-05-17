@@ -9,6 +9,5 @@ import (
 
 func TestComposer(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(GinkgoT(), "Composer Suite")
-
+	RunSpecs(t, "Composer Suite")
 }

@@ -3,108 +3,89 @@ package composer
 import (
 	"bytes"
 	"fmt"
-	. "github.com/onsi/ginkgo"
-	"golang.org/x/net/html"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+	"golang.org/x/net/html"
 )
 
-var _ = Describe("Testing with Ginkgo", func() {
-	It("get attributes", func() {
+var _ = Describe("Composer", func() {
 
-		z := html.NewTokenizer(strings.NewReader("<div name=\"brendan\" title=\"captain\"></div>"))
-		z.Next()
+	Context("Tokenizing HTML", func() {
+		htmlWithComposerAttribute := "<div composer-url=\"http://example.com\" title=\"captain\"></div>"
+		htmlWithoutComposerAttribute := "<div name=\"brendan\" title=\"captain\"></div>"
 
-		attributes := getAttributes(z, make([]*html.Attribute, 0))
+		It("Should retrieve all html attributes", func() {
 
-		expected := 2
+			z := html.NewTokenizer(strings.NewReader(htmlWithoutComposerAttribute))
+			z.Next()
 
-		if len(attributes) != expected {
-			GinkgoT().Errorf("Expected %d attributes. Found %d", expected, len(attributes))
-		}
+			attributes := getAttributes(z, make([]*html.Attribute, 0))
 
-		if attributes[0].Key != "name" {
-			GinkgoT().Errorf("Expected attribute name brendan, but found %s", attributes[0].Key)
-		}
+			Expect(len(attributes)).To(Equal(2))
+			Expect(attributes[0].Key).To(Equal("name"))
+		})
+
+		It("Should retrieve properly initialized ComposerTag from HTML", func() {
+			z := html.NewTokenizer(strings.NewReader(htmlWithComposerAttribute))
+			z.Next()
+
+			t := getComposerTag(z)
+
+			Expect(t).NotTo(BeNil())
+			Expect(t.Url).To(Equal("http://example.com"))
+		})
+
+		It("Should not return a ComposerTag if composer attributes are not present", func() {
+			z := html.NewTokenizer(strings.NewReader(htmlWithoutComposerAttribute))
+			z.Next()
+
+			t := getComposerTag(z)
+
+			Expect(t).To(BeNil())
+		})
+
 	})
-	It("get composer tag", func() {
 
-		z1 := html.NewTokenizer(strings.NewReader("<div name=\"brendan\" title=\"captain\"></div>"))
-		z2 := html.NewTokenizer(strings.NewReader("<div composer-url=\"http://example.com\" title=\"captain\"></div>"))
+	Context("Composing HTML", func() {
+		var ts *httptest.Server
+		var serverUrl string
 
-		z1.Next()
-		z2.Next()
+		BeforeEach(func() {
+			ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/a" {
+					fmt.Fprintf(w, "Hello, client from <div composer-url=\"%s/b\"></div>", serverUrl)
+				} else if r.URL.Path == "/b" {
+					fmt.Fprint(w, "Hello, client from b")
+				} else {
+					fmt.Fprint(w, "Hello, "+r.URL.Path)
+				}
+			}))
 
-		t1 := getComposerTag(z1)
-		t2 := getComposerTag(z2)
+			serverUrl = ts.URL
+		})
 
-		if t1 != nil {
-			GinkgoT().Error("Expected no ComposerTag but found one")
-		}
+		AfterEach(func() {
+			ts.Close()
+		})
 
-		if t2 == nil {
-			GinkgoT().Error("Did not find ComposerTag when one was expected")
-		}
-
-		if t2.Url != "http://example.com" {
-			GinkgoT().Error("Did not find correct ComposerTag url")
-		}
-	})
-	It("compose", func() {
-
-		serverUrl := ""
-
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/a" {
-				fmt.Fprintf(w, "Hello, client from <div composer-url=\"%s/b\"></div>", serverUrl)
-			} else if r.URL.Path == "/b" {
-				fmt.Fprint(w, "Hello, client from b")
-			} else {
-				fmt.Fprint(w, "Hello, "+r.URL.Path)
-			}
-		}))
-
-		serverUrl = ts.URL
-
-		defer ts.Close()
-
-		unparsed := strings.NewReader(fmt.Sprintf("<div><p composer-url=\"%s/a\" title=\"captain\">other stuff</p></div>", ts.URL))
-		parsed := Compose(unparsed)
-
-		buf := new(bytes.Buffer)
-		buf.ReadFrom(parsed)
-
-		result := buf.String()
-
-		if result != "blah" {
-			GinkgoT().Errorf("Expected blah but got %s", result)
-		}
-	})
-	It("pipeline", func() {
-
-		tags := []*ComposerTag{
-			&ComposerTag{Url: "http://example/com/a"},
-			&ComposerTag{Url: "http://example/com/b"},
-			&ComposerTag{Url: "http://example/com/c"},
-		}
-
-		loader := func(url string) io.Reader {
-			return strings.NewReader(url)
-		}
-
-		pipeline := BuildTagPipeline(tags, loader)
-
-		for tag := range pipeline {
-			url := tag.Url
+		It("Should replace composer elements with loaded HTML", func() {
+			composed := Compose(strings.NewReader(fmt.Sprintf("<div><p composer-url=\"%s/b\" title=\"captain\">other stuff</p></div>", ts.URL)))
 			buf := new(bytes.Buffer)
-			buf.ReadFrom(tag.Content)
-			content := buf.String()
+			buf.ReadFrom(composed)
 
-			if url != content {
-				GinkgoT().Errorf("Expected %s but got %s", url, content)
-			}
-		}
+			Expect(buf.String()).To(Equal("<div>Hello, client from b</div>"))
+		})
+
+		It("Should recursively process composer elements found in loaded HTML", func() {
+			composed := Compose(strings.NewReader(fmt.Sprintf("<div><p composer-url=\"%s/a\" title=\"captain\">other stuff</p></div>", ts.URL)))
+			buf := new(bytes.Buffer)
+			buf.ReadFrom(composed)
+
+			Expect(buf.String()).To(Equal("<div>Hello, client from Hello, client from b</div>"))
+		})
 	})
 })
