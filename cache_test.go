@@ -1,35 +1,38 @@
 package composer
 
 import (
-	"testing"
+	. "github.com/onsi/ginkgo"
 	"time"
 )
 
-func TestGetAndSet(t *testing.T) {
-	expires := time.Now().Add(time.Minute)
-	expected := "myvalue"
-	key := "mykey"
+var _ = Describe("Testing with Ginkgo", func() {
+	It("get and set", func() {
 
-	cache := NewMemoryCache()
+		expires := time.Now().Add(time.Minute)
+		expected := "myvalue"
+		key := "mykey"
 
-	cache.Set(key, expected, expires)
+		cache := NewMemoryCache()
 
-	if actual, ok := cache.Get(key); !ok || actual != expected {
-		t.Errorf("Expected %s but got %s", expected, actual)
-	}
-}
+		cache.Set(key, expected, expires)
 
-func TestExpiry(t *testing.T) {
-	expires := time.Now().Add(time.Second)
-	key := "mykey"
+		if actual, ok := cache.Get(key); !ok || actual != expected {
+			GinkgoT().Errorf("Expected %s but got %s", expected, actual)
+		}
+	})
+	It("expiry", func() {
 
-	cache := NewMemoryCache()
+		expires := time.Now().Add(time.Second)
+		key := "mykey"
 
-	cache.Set(key, "myvalue", expires)
+		cache := NewMemoryCache()
 
-	time.Sleep(time.Second * 2)
+		cache.Set(key, "myvalue", expires)
 
-	if actual, ok := cache.Get(key); ok {
-		t.Errorf("Expected nil but got %s", actual)
-	}
-}
+		time.Sleep(time.Second * 2)
+
+		if actual, ok := cache.Get(key); ok {
+			GinkgoT().Errorf("Expected nil but got %s", actual)
+		}
+	})
+})
