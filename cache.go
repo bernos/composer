@@ -40,6 +40,5 @@ func (c *MemoryCache) Get(key string) (string, bool) {
 
 func (c *MemoryCache) Set(key string, value string, expires time.Time) {
 	item := cacheItem{value: value, expires: expires}
-
 	c.items[key] = item
 }

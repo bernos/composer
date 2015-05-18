@@ -2,10 +2,9 @@ package composer
 
 import (
 	"flag"
+	"github.com/elazarl/goproxy"
 	"io/ioutil"
 	"net/http"
-
-	"github.com/elazarl/goproxy"
 )
 
 var (
@@ -30,7 +29,7 @@ func NewComposerHttpServer() *ComposerHttpServer {
 	}
 
 	c.proxy.OnResponse().DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
-		content := Compose(resp.Body)
+		content := Compose(resp.Body, NewLoader(NewMemoryCache()))
 		resp.Body.Close()
 		resp.Body = ioutil.NopCloser(content)
 

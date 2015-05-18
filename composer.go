@@ -2,13 +2,9 @@ package composer
 
 import (
 	"bytes"
-	"fmt"
-	"golang.org/x/net/html"
 	"io"
-	"io/ioutil"
-	"net/http"
-	"strings"
-	"time"
+
+	"golang.org/x/net/html"
 )
 
 type ComposerTag struct {
@@ -17,18 +13,18 @@ type ComposerTag struct {
 	Url     string
 }
 
-func Compose(r io.Reader) io.Reader {
+func Compose(r io.Reader, l Loader) io.Reader {
 	buf, tags := extractComposerTags(r)
 	output := new(bytes.Buffer)
 
 	if len(tags) > 0 {
 		offset := 0
 
-		for tag := range BuildTagPipeline(tags, fetchFromUrl) {
+		for tag := range BuildTagPipeline(tags, l) {
 			output.Write(buf.Next(tag.Offset - offset))
 
 			if tag.Content != nil {
-				output.ReadFrom(Compose(tag.Content))
+				output.ReadFrom(Compose(tag.Content, l))
 			} else {
 				output.WriteString("<!-- composer failed to load content from " + tag.Url + " -->")
 			}
@@ -106,36 +102,4 @@ func getAttributes(z *html.Tokenizer, a []*html.Attribute) []*html.Attribute {
 	}
 
 	return a
-}
-
-/**
- * fetchFromUrl will fetch content for the url and return the resulting io.Reader
- */
-func fetchFromUrl(url string) io.Reader {
-	ch := make(chan io.Reader, 1)
-
-	go func(url string) {
-
-		res, err := http.Get(url)
-
-		if err != nil {
-			ch <- strings.NewReader(fmt.Sprintf("<-- composer encountered an error while loading content from %s - %v", url, err))
-		} else {
-			greeting, err := ioutil.ReadAll(res.Body)
-			res.Body.Close()
-
-			if err != nil {
-				ch <- strings.NewReader(fmt.Sprintf("<-- composer encountered an error while loading content from %s - %v", url, err))
-			} else {
-				ch <- bytes.NewReader(greeting)
-			}
-		}
-	}(url)
-
-	select {
-	case r := <-ch:
-		return r
-	case <-time.After(time.Second * 1):
-		return nil
-	}
 }

@@ -2,9 +2,7 @@ package composer
 
 import (
 	"bytes"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
+	"io"
 	"strings"
 
 	. "github.com/onsi/ginkgo"
@@ -51,29 +49,18 @@ var _ = Describe("Composer", func() {
 	})
 
 	Context("Composing HTML", func() {
-		var ts *httptest.Server
-		var serverUrl string
 
-		BeforeEach(func() {
-			ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/a" {
-					fmt.Fprintf(w, "Hello, client from <div composer-url=\"%s/b\"></div>", serverUrl)
-				} else if r.URL.Path == "/b" {
-					fmt.Fprint(w, "Hello, client from b")
-				} else {
-					fmt.Fprint(w, "Hello, "+r.URL.Path)
-				}
-			}))
-
-			serverUrl = ts.URL
-		})
-
-		AfterEach(func() {
-			ts.Close()
-		})
+		loader := func(url string) io.Reader {
+			if url == "http://composer/a" {
+				return strings.NewReader("Hello, client from <div composer-url=\"http://composer/b\"></div>")
+			} else if url == "http://composer/b" {
+				return strings.NewReader("Hello, client from b")
+			}
+			return strings.NewReader("Hello, " + url)
+		}
 
 		It("Should replace composer elements with loaded HTML", func() {
-			composed := Compose(strings.NewReader(fmt.Sprintf("<div><p composer-url=\"%s/b\" title=\"captain\">other stuff</p></div>", ts.URL)))
+			composed := Compose(strings.NewReader("<div><p composer-url=\"http://composer/b\" title=\"captain\">other stuff</p></div>"), loader)
 			buf := new(bytes.Buffer)
 			buf.ReadFrom(composed)
 
@@ -81,7 +68,7 @@ var _ = Describe("Composer", func() {
 		})
 
 		It("Should recursively process composer elements found in loaded HTML", func() {
-			composed := Compose(strings.NewReader(fmt.Sprintf("<div><p composer-url=\"%s/a\" title=\"captain\">other stuff</p></div>", ts.URL)))
+			composed := Compose(strings.NewReader("<div><p composer-url=\"http://composer/a\" title=\"captain\">other stuff</p></div>"), loader)
 			buf := new(bytes.Buffer)
 			buf.ReadFrom(composed)
 

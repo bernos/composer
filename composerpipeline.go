@@ -1,11 +1,6 @@
 package composer
 
-import (
-	"io"
-	"sync"
-)
-
-type Loader func(string) io.Reader
+import "sync"
 
 type PipelineStep func(<-chan *ComposerTag) <-chan *ComposerTag
 
